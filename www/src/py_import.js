@@ -207,7 +207,7 @@ function import_py(module,path,package){
 $B.run_py=run_py=function(module_contents,path,module,compiled) {
     if (!compiled) {
         var $Node = $B.$Node,$NodeJSCtx=$B.$NodeJSCtx
-        $B.$py_module_path[module.name]=path
+        $B.$py_module_path[module.__name__]=path
 
         var root = $B.py2js(module_contents,module.__name__,
             module.__name__,'__builtins__')
@@ -303,6 +303,9 @@ finder_VFS.$dict = {
         var ext = stored[0],
             module_contents = stored[1];
         module.$is_package = stored[2];
+        var path = $B.brython_path+'Lib/'+module.__name__
+        if(module.$is_package){path += '/__init__.py'}
+        module.__path__ = module.__file__ = path
         if (ext == '.js') {run_js(module_contents, module.__path__, module)}
         else {run_py(module_contents, module.__path__, module, ext=='.pyc.js')}
         if($B.debug>1){console.log('import '+module.__name__+' from VFS')}
@@ -509,7 +512,6 @@ finder_path.$dict = {
             }
         }
         return _b_.None;
-            run_py(code, _spec.origin, module, src_type=='pyc');
     }
 }
 
@@ -625,22 +627,20 @@ url_hook.$dict = {
             hint = self.hint,
             base_path = self.path_entry + fullname.match(/[^.]+$/g)[0],
             modpaths = [];
-        var tryall = hint === undefined;
-        if (tryall || hint == 'js') {
-            // either js or undefined , try js code
-            modpaths = [[base_path + '.js', 'js', false]];
-        }
-        if (tryall || hint == 'pyc.js') {
-            // either pyc or undefined , try pre-compiled module code
-            modpaths = modpaths.concat([[base_path + '.pyc.js', 'pyc.js', false],
-                                        [base_path + '/__init__.pyc.js',
-                                         'pyc.js', true]]);
-        }
-        if (tryall || hint == 'py') {
-            // either py or undefined , try py code
+
+        if (self.path_entry == $B.brython_path+'libs/'){
+            if(!$B.$options.static_stdlib_import) {
+                // Only search js modules inside src/libs, and if we don't
+                // use static stdlib import (handled by finder_stdlib_static)
+                modpaths = [[base_path + '.js', 'js', false]];
+            }
+        }else{
+            // In other locations than src/libs, only search Python modules
+            // or packages
             modpaths = modpaths.concat([[base_path + '.py', 'py', false],
                                          [base_path + '/__init__.py', 'py', true]]);
         }
+
         for (var j = 0; notfound && j < modpaths.length; ++j) {
             try{
                 var file_info = modpaths[j];
