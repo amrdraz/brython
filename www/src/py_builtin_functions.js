@@ -345,11 +345,16 @@ function $eval(src, _globals, _locals){
             }
         }
 
+        // this is where we convert parsed node to JS
         var js = root.to_js()
         if ($B.async_enabled) js=$B.execution_object.source_conversion(js) 
         //js=js.replace("@@", "\'", 'g')
- 
-        var res = eval(js)
+    
+        // This is where we run this js code
+        var res = eval('(function* ($locals_'+module_name+') {'+js+'})($locals_'+module_name+')');
+        res.next();
+        // res = eval(js)
+
 
         if(_globals!==undefined){
             // Update _globals with the namespace after execution
