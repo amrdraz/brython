@@ -808,6 +808,12 @@ function $AugmentedAssignCtx(context, op){
         
         var left_is_id = (this.tree[0].type=='expr' && 
             this.tree[0].tree[0].type=='id')
+
+        if(left_is_id){
+            var left_id = this.tree[0].tree[0].value,
+                was_bound = $B.bound[this.scope.id][left_id]!==undefined
+        }
+            
         var right_is_int = (this.tree[1].type=='expr' && 
             this.tree[1].tree[0].type=='int')
         
@@ -970,6 +976,12 @@ function $AugmentedAssignCtx(context, op){
         var js3 = 'getattr('+context.to_js()+',"'+func+'")('+right+')'
         new $NodeJSCtx(aa3,js3)
         aa2.add(aa3)
+
+        // Augmented assignment doesn't bind names ; if the variable name has
+        // been bound in the code above (by a call to $AssignCtx), remove it
+        if(left_is_id && !was_bound && !this.scope.blurred){
+            $B.bound[this.scope.id][left_id] = undefined
+        }
         
         return offset
     }
@@ -984,6 +996,7 @@ function $BodyCtx(context){
     while(ctx_node.type!=='node'){ctx_node=ctx_node.parent}
     var tree_node = ctx_node.node
     var body_node = new $Node()
+    body_node.line_num = tree_node.line_num
     tree_node.insert(0,body_node)
     return new $NodeCtx(body_node)
 }
@@ -3019,8 +3032,9 @@ function $IdCtx(context,value){
 
     var scope = $get_scope(this)
     
-    if(context.type=='target_list'){
-        // An id defined as a target in a "for" loop is bound
+    if(context.type=='target_list' || context.type=='packed'){
+        // An id defined as a target in a "for" loop, or as "packed" 
+        // (eg "a, *b = [1, 2, 3]") is bound
         $B.bound[scope.id][value]=true
         this.bound = true
     }
@@ -3663,7 +3677,8 @@ function $NonlocalCtx(context){
     this.transform = function(node, rank){
         var pscope = this.scope.parent_block
         if(pscope.context===undefined){
-            $_SyntaxError(context,["no binding for nonlocal '"+name+"' found"])
+            $_SyntaxError(context,["no binding for nonlocal '"+
+                $B.last(Object.keys(this.names))+"' found"])
         }else{
             while(pscope!==undefined && pscope.context!==undefined){
                 for(var name in this.names){
@@ -6928,6 +6943,7 @@ function brython(options){
     // If the argument provided to brython() is a number, it is the debug 
     // level
     if(typeof options==='number') options={'debug':options}
+    if(options.debug === undefined) { options.debug = 0 }
     $B.debug = options.debug
     // set built-in variable __debug__
     _b_.__debug__ = $B.debug>0
@@ -6969,8 +6985,10 @@ function brython(options){
     if(options.static_stdlib_import!==false){
         // Add finder using static paths
         meta_path.push($B.meta_path[1])
-        // Remove /Lib in sys.path : if we use the static list and the module
+        // Remove /Lib and /libs in sys.path :
+        // if we use the static list and the module
         // was not find in it, it's no use searching twice in the same place
+        $B.path.shift()
         $B.path.shift()
     }
     // Always use the defaut finder using sys.path
